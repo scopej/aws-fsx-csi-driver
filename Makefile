@@ -20,7 +20,7 @@ BUILD_DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS?="-X ${PKG}/pkg/driver.driverVersion=${VERSION} -X ${PKG}/pkg/driver.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/driver.buildDate=${BUILD_DATE}"
 GO111MODULE=on
 GOPROXY=direct
-GOPATH=$(shell go env GOPATH)
+GOBIN=$(shell go env GOBIN)
 
 .EXPORT_ALL_VARIABLES:
 
@@ -41,7 +41,7 @@ test:
 .PHONY: test-e2e
 test-e2e:
 	go get github.com/aws/aws-k8s-tester/e2e/tester/cmd/k8s-e2e-tester@master
-	TESTCONFIG=./tester/e2e-test-config.yaml ${GOPATH}/bin/k8s-e2e-tester
+	TESTCONFIG=./tester/e2e-test-config.yaml ${GOBIN}/k8s-e2e-tester
 
 .PHONY: image
 image:

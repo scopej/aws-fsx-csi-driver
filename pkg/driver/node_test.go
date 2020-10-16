@@ -70,9 +70,12 @@ func TestNodePublishVolume(t *testing.T) {
 					VolumeCapability: stdVolCap,
 					TargetPath:       targetPath,
 				}
+				lustreTarget := "/tmp/mnt/fsx/volumeId"
 
+				mockMounter.EXPECT().MakeDir(gomock.Eq(lustreTarget)).Return(nil)
 				mockMounter.EXPECT().MakeDir(gomock.Eq(targetPath)).Return(nil)
-				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(targetPath), gomock.Eq("lustre"), gomock.Any()).Return(nil)
+				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(lustreTarget), gomock.Eq("lustre"), gomock.Any()).Return(nil)
+				mockMounter.EXPECT().Mount(gomock.Eq(lustreTarget), gomock.Eq(targetPath), gomock.Eq("bind"), gomock.Any()).Return(nil)
 				_, err := driver.NodePublishVolume(ctx, req)
 				if err != nil {
 					t.Fatalf("NodePublishVolume is failed: %v", err)
@@ -103,8 +106,12 @@ func TestNodePublishVolume(t *testing.T) {
 					TargetPath:       targetPath,
 				}
 
+				lustreTarget := "/tmp/mnt/fsx/volumeId"
+
+				mockMounter.EXPECT().MakeDir(gomock.Eq(lustreTarget)).Return(nil)
 				mockMounter.EXPECT().MakeDir(gomock.Eq(targetPath)).Return(nil)
-				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(targetPath), gomock.Eq("lustre"), gomock.Any()).Return(nil)
+				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(lustreTarget), gomock.Eq("lustre"), gomock.Any()).Return(nil)
+				mockMounter.EXPECT().Mount(gomock.Eq(lustreTarget), gomock.Eq(targetPath), gomock.Eq("bind"), gomock.Any()).Return(nil)
 				_, err := driver.NodePublishVolume(ctx, req)
 				if err != nil {
 					t.Fatalf("NodePublishVolume is failed: %v", err)
@@ -137,9 +144,13 @@ func TestNodePublishVolume(t *testing.T) {
 					TargetPath:       targetPath,
 					Readonly:         true,
 				}
+				lustreTarget := "/tmp/mnt/fsx/volumeId"
 
+				mockMounter.EXPECT().MakeDir(gomock.Eq(lustreTarget)).Return(nil)
 				mockMounter.EXPECT().MakeDir(gomock.Eq(targetPath)).Return(nil)
-				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(targetPath), gomock.Eq("lustre"), gomock.Eq([]string{"ro"})).Return(nil)
+				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(lustreTarget), gomock.Eq("lustre"), gomock.Eq([]string{"ro"})).Return(nil)
+				mockMounter.EXPECT().Mount(gomock.Eq(lustreTarget), gomock.Eq(targetPath), gomock.Eq("bind"), gomock.Any()).Return(nil)
+
 				_, err := driver.NodePublishVolume(ctx, req)
 				if err != nil {
 					t.Fatalf("NodePublishVolume is failed: %v", err)
@@ -181,8 +192,12 @@ func TestNodePublishVolume(t *testing.T) {
 					TargetPath: targetPath,
 				}
 
+				lustreTarget := "/tmp/mnt/fsx/volumeId"
+
+				mockMounter.EXPECT().MakeDir(gomock.Eq(lustreTarget)).Return(nil)
 				mockMounter.EXPECT().MakeDir(gomock.Eq(targetPath)).Return(nil)
-				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(targetPath), gomock.Eq("lustre"), gomock.Eq([]string{"flock"})).Return(nil)
+				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(lustreTarget), gomock.Eq("lustre"), gomock.Eq([]string{"flock"})).Return(nil)
+				mockMounter.EXPECT().Mount(gomock.Eq(lustreTarget), gomock.Eq(targetPath), gomock.Eq("bind"), gomock.Any()).Return(nil)
 				_, err := driver.NodePublishVolume(ctx, req)
 				if err != nil {
 					t.Fatalf("NodePublishVolume is failed: %v", err)
@@ -373,8 +388,11 @@ func TestNodePublishVolume(t *testing.T) {
 				source := dnsname + "@tcp:/" + mountname
 
 				err := fmt.Errorf("failed to Mount")
+				lustreTarget := "/tmp/mnt/fsx/volumeId"
+
+				mockMounter.EXPECT().MakeDir(gomock.Eq(lustreTarget)).Return(nil)
 				mockMounter.EXPECT().MakeDir(gomock.Eq(targetPath)).Return(nil)
-				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(targetPath), gomock.Eq("lustre"), gomock.Any()).Return(err)
+				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(lustreTarget), gomock.Eq("lustre"), gomock.Any()).Return(err)
 
 				_, err = driver.NodePublishVolume(ctx, req)
 				if err == nil {
@@ -419,8 +437,10 @@ func TestNodeUnpublishVolume(t *testing.T) {
 					VolumeId:   "volumeId",
 					TargetPath: targetPath,
 				}
+				lustreTarget := "/tmp/mnt/fsx/volumeId"
 
 				mockMounter.EXPECT().Unmount(gomock.Eq(targetPath)).Return(nil)
+				mockMounter.EXPECT().Unmount(gomock.Eq(lustreTarget)).Return(nil)
 
 				_, err := driver.NodeUnpublishVolume(ctx, req)
 				if err != nil {
