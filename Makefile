@@ -13,7 +13,7 @@
 # limitations under the License.
 
 PKG=github.com/kubernetes-sigs/aws-fsx-csi-driver
-IMAGE?=amazon/aws-fsx-csi-driver
+IMAGE?=634562692672.dkr.ecr.us-west-2.amazonaws.com/aws-fsx-csi-driver
 VERSION=v0.4.0-dirty
 GIT_COMMIT?=$(shell git rev-parse HEAD)
 BUILD_DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -40,7 +40,7 @@ test:
 
 .PHONY: test-e2e
 test-e2e:
-	go get github.com/aws/aws-k8s-tester/e2e/tester/cmd/k8s-e2e-tester@master
+	go install github.com/aws/aws-k8s-tester/e2e/tester/cmd/k8s-e2e-tester
 	TESTCONFIG=./tester/e2e-test-config.yaml ${GOBIN}/k8s-e2e-tester
 
 .PHONY: image

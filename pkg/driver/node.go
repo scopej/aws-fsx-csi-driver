@@ -50,6 +50,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	context := req.GetVolumeContext()
 	dnsname := context[volumeContextDnsName]
 	mountname := context[volumeContextMountName]
+	subpath := context[volumeContextSubPath]
 
 	if len(dnsname) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "dnsname is not provided")
@@ -66,6 +67,8 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	if len(target) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Target path not provided")
 	}
+
+	lustreTargetSubPath := fmt.Sprintf("%s/%s", lustreTarget, subpath)
 
 	volCap := req.GetVolumeCapability()
 	if volCap == nil {
@@ -111,11 +114,17 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		os.Remove(lustreTarget)
 		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, lustreTarget, err)
 	}
+
+	klog.V(5).Infof("NodePublishVolume: creating lustre dir %s", lustreTargetSubPath)
+	if err := d.mounter.MakeDir(lustreTargetSubPath); err != nil {
+		return nil, status.Errorf(codes.Internal, "Could not create lustre dir %q: %v", lustreTargetSubPath, err)
+	}
+
 	// TODO: Copy some mount options over.
-	klog.V(5).Infof("NodePublishVolume: bind mounting %s at %s", lustreTarget, target)
-	if err := d.mounter.Mount(lustreTarget, target, "bind", []string{}); err != nil {
+	klog.V(5).Infof("NodePublishVolume: bind mounting %s at %s", lustreTargetSubPath, target)
+	if err := d.mounter.Mount(lustreTargetSubPath, target, "", []string{"bind"}); err != nil {
 		os.Remove(target)
-		return nil, status.Errorf(codes.Internal, "Could not bind mount %q at %q: %v", lustreTarget, target, err)
+		return nil, status.Errorf(codes.Internal, "Could not bind mount %q at %q: %v", lustreTargetSubPath, target, err)
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil

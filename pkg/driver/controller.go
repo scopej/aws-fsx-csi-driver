@@ -39,6 +39,7 @@ var (
 const (
 	volumeContextDnsName                      = "dnsname"
 	volumeContextMountName                    = "mountname"
+	volumeContextSubPath                      = "subPath"
 	volumeParamsSubnetId                      = "subnetId"
 	volumeParamsSecurityGroupIds              = "securityGroupIds"
 	volumeParamsAutoImportPolicy              = "autoImportPolicy"
