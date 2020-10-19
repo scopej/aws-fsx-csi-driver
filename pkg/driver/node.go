@@ -28,15 +28,95 @@ import (
 )
 
 var (
-	nodeCaps = []csi.NodeServiceCapability_RPC_Type{}
+	nodeCaps = []csi.NodeServiceCapability_RPC_Type{
+		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+	}
 )
 
 func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	klog.V(4).Infof("NodePublishVolume: called with args %+v", req)
+
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
+	}
+
+	context := req.GetVolumeContext()
+	dnsname := context[volumeContextDnsName]
+	mountname := context[volumeContextMountName]
+
+	if len(dnsname) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "dnsname is not provided")
+	}
+
+	if len(mountname) == 0 {
+		mountname = "fsx"
+	}
+
+	source := fmt.Sprintf("%s@tcp:/%s", dnsname, mountname)
+
+	target := req.GetStagingTargetPath()
+	if len(target) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Target path not provided")
+	}
+
+	volCap := req.GetVolumeCapability()
+	if volCap == nil {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
+	}
+
+	if !d.isValidVolumeCapabilities([]*csi.VolumeCapability{volCap}) {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
+	}
+
+	mountOptions := []string{}
+	// if req.GetReadonly() {
+	// 	mountOptions = append(mountOptions, "ro")
+	// }
+
+	if m := volCap.GetMount(); m != nil {
+		hasOption := func(options []string, opt string) bool {
+			for _, o := range options {
+				if o == opt {
+					return true
+				}
+			}
+			return false
+		}
+		for _, f := range m.MountFlags {
+			if !hasOption(mountOptions, f) {
+				mountOptions = append(mountOptions, f)
+			}
+		}
+	}
+	klog.V(5).Infof("NodePublishVolume: creating dir %s", target)
+	if err := d.mounter.MakeDir(target); err != nil {
+		return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", target, err)
+	}
+
+	klog.V(5).Infof("NodePublishVolume: lustre mounting %s at %s with options %v", source, target, mountOptions)
+	if err := d.mounter.Mount(source, target, "lustre", mountOptions); err != nil {
+		os.Remove(target)
+		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, target, err)
+	}
+
+	return &csi.NodeStageVolumeResponse{}, nil
 }
 
 func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	klog.V(4).Infof("NodePublishVolume: called with args %+v", req)
+
+	//context := req.GetVolumeContext()
+
+	target := req.GetStagingTargetPath()
+
+	klog.V(5).Infof("NodeUnpublishVolume: unmounting %s", target)
+	err := d.mounter.Unmount(target)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Could not unmount %q: %v", target, err)
+	}
+
+	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
 func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
@@ -60,59 +140,21 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		mountname = "fsx"
 	}
 
-	source := fmt.Sprintf("%s@tcp:/%s", dnsname, mountname)
-	lustreTarget := fmt.Sprintf("/tmp/mnt/fsx/%s", volumeID)
-
 	target := req.GetTargetPath()
 	if len(target) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Target path not provided")
 	}
 
-	lustreTargetSubPath := fmt.Sprintf("%s/%s", lustreTarget, subpath)
-
-	volCap := req.GetVolumeCapability()
-	if volCap == nil {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability not provided")
+	stagingTarget := req.GetStagingTargetPath()
+	if len(stagingTarget) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Staging Target path not provided")
 	}
 
-	if !d.isValidVolumeCapabilities([]*csi.VolumeCapability{volCap}) {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
-	}
+	lustreTargetSubPath := fmt.Sprintf("%s/%s", stagingTarget, subpath)
 
-	mountOptions := []string{}
-	if req.GetReadonly() {
-		mountOptions = append(mountOptions, "ro")
-	}
-
-	if m := volCap.GetMount(); m != nil {
-		hasOption := func(options []string, opt string) bool {
-			for _, o := range options {
-				if o == opt {
-					return true
-				}
-			}
-			return false
-		}
-		for _, f := range m.MountFlags {
-			if !hasOption(mountOptions, f) {
-				mountOptions = append(mountOptions, f)
-			}
-		}
-	}
 	klog.V(5).Infof("NodePublishVolume: creating dir %s", target)
 	if err := d.mounter.MakeDir(target); err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", target, err)
-	}
-
-	klog.V(5).Infof("NodePublishVolume: creating lustre dir %s", lustreTarget)
-	if err := d.mounter.MakeDir(lustreTarget); err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not create lustre dir %q: %v", lustreTarget, err)
-	}
-
-	klog.V(5).Infof("NodePublishVolume: lustre mounting %s at %s with options %v", source, lustreTarget, mountOptions)
-	if err := d.mounter.Mount(source, lustreTarget, "lustre", mountOptions); err != nil {
-		os.Remove(lustreTarget)
-		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, lustreTarget, err)
 	}
 
 	klog.V(5).Infof("NodePublishVolume: creating lustre dir %s", lustreTargetSubPath)
@@ -137,7 +179,6 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
 	}
-	lustreTarget := fmt.Sprintf("/tmp/mnt/fsx/%s", volumeID)
 
 	target := req.GetTargetPath()
 	if len(target) == 0 {
@@ -148,12 +189,6 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	err := d.mounter.Unmount(target)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not unmount %q: %v", target, err)
-	}
-
-	klog.V(5).Infof("NodeUnpublishVolume: unmounting %s", lustreTarget)
-	err = d.mounter.Unmount(lustreTarget)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not unmount %q: %v", lustreTarget, err)
 	}
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
