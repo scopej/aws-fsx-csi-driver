@@ -62,6 +62,7 @@ type FileSystem struct {
 	CapacityGiB  int64
 	DnsName      string
 	MountName    string
+	Tags         map[string]string
 }
 
 // FileSystemOptions represents the options to create FSx for Lustre filesystem
@@ -196,6 +197,7 @@ func (c *cloud) CreateFileSystem(ctx context.Context, volumeName string, fileSys
 		CapacityGiB:  *output.FileSystem.StorageCapacity,
 		DnsName:      *output.FileSystem.DNSName,
 		MountName:    mountName,
+		Tags:         tagsToMap(output.FileSystem.Tags),
 	}, nil
 }
 
@@ -210,6 +212,14 @@ func (c *cloud) DeleteFileSystem(ctx context.Context, fileSystemId string) (err 
 		return fmt.Errorf("DeleteFileSystem failed: %v", err)
 	}
 	return nil
+}
+
+func tagsToMap(tagList []*fsx.Tag) map[string]string {
+	tagMap := map[string]string{}
+	for _, tag := range tagList {
+		tagMap[*tag.Key] = *tag.Value
+	}
+	return tagMap
 }
 
 func (c *cloud) DescribeFileSystem(ctx context.Context, fileSystemId string) (*FileSystem, error) {
@@ -228,6 +238,7 @@ func (c *cloud) DescribeFileSystem(ctx context.Context, fileSystemId string) (*F
 		CapacityGiB:  *fs.StorageCapacity,
 		DnsName:      *fs.DNSName,
 		MountName:    mountName,
+		Tags:         tagsToMap(fs.Tags),
 	}, nil
 }
 

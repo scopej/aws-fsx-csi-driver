@@ -18,6 +18,7 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -37,9 +38,12 @@ var (
 )
 
 const (
-	volumeContextDnsName                      = "dnsname"
-	volumeContextMountName                    = "mountname"
-	volumeContextSubPath                      = "subPath"
+	volumeContextDnsName      = "dnsname"
+	volumeContextMountName    = "mountname"
+	volumeContextSubPath      = "subPath"
+	volumeContextFileSystemId = "fileSystemId"
+
+	volumeParamsFileSystemId                  = "fileSystemId"
 	volumeParamsSubnetId                      = "subnetId"
 	volumeParamsSecurityGroupIds              = "securityGroupIds"
 	volumeParamsAutoImportPolicy              = "autoImportPolicy"
@@ -70,9 +74,35 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if !d.isValidVolumeCapabilities(volCaps) {
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities not supported")
 	}
-
 	// create a new volume with idempotency
 	// idempotency is handled by `CreateFileSystem`
+	var (
+		fs  *cloud.FileSystem
+		err error
+	)
+	volumeParams := req.GetParameters()
+	fileSystemId := volumeParams[volumeParamsFileSystemId]
+	if fileSystemId != "" {
+		fs, err = d.cloud.DescribeFileSystem(ctx, fileSystemId)
+	} else {
+		fs, err = d.createVolumeFromRequest(ctx, req)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	err = d.cloud.WaitForFileSystemAvailable(ctx, fs.FileSystemId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Filesystem is not ready: %v", err)
+	}
+	if fileSystemId != "" {
+		return newCreateVolumeResponseWithSubPath(volName, fs), nil
+	} else {
+		return newCreateVolumeResponse(fs), nil
+	}
+}
+
+func (d *Driver) createVolumeFromRequest(ctx context.Context, req *csi.CreateVolumeRequest) (*cloud.FileSystem, error) {
 	volumeParams := req.GetParameters()
 	subnetId := volumeParams[volumeParamsSubnetId]
 	securityGroupIds := volumeParams[volumeParamsSecurityGroupIds]
@@ -143,7 +173,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	} else {
 		fsOptions.CapacityGiB = util.RoundUpVolumeSize(capRange.GetRequiredBytes(), fsOptions.DeploymentType, fsOptions.StorageType, fsOptions.PerUnitStorageThroughput)
 	}
-
+	volName := req.GetName()
 	fs, err := d.cloud.CreateFileSystem(ctx, volName, fsOptions)
 	if err != nil {
 		switch err {
@@ -153,13 +183,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			return nil, status.Errorf(codes.Internal, "Could not create volume %q: %v", volName, err)
 		}
 	}
-
-	err = d.cloud.WaitForFileSystemAvailable(ctx, fs.FileSystemId)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Filesystem is not ready: %v", err)
-	}
-
-	return newCreateVolumeResponse(fs), nil
+	return fs, nil
 }
 
 func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
@@ -167,6 +191,22 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
+	}
+	// Ensure that tag exists before deleting?
+	// Describe
+	if fs, err := d.cloud.DescribeFileSystem(ctx, volumeID); err != nil {
+		if err == cloud.ErrNotFound {
+			klog.V(4).Infof("DeleteVolume: volume not found, returning with success")
+			return &csi.DeleteVolumeResponse{}, nil
+		}
+		return nil, status.Errorf(codes.Internal, "Could not describe volume ID %q: %v", volumeID, err)
+	} else {
+		// TODO: Just look for / in the volume id...
+		// check tags
+		if _, exists := fs.Tags[cloud.VolumeNameTagKey]; !exists {
+			klog.V(4).Infof("DeleteVolume: \"%s\" tag not found, returning with success without deleting", cloud.VolumeNameTagKey)
+			return &csi.DeleteVolumeResponse{}, nil
+		}
 	}
 
 	if err := d.cloud.DeleteFileSystem(ctx, volumeID); err != nil {
@@ -281,6 +321,21 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 
 func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func newCreateVolumeResponseWithSubPath(subPath string, fs *cloud.FileSystem) *csi.CreateVolumeResponse {
+	return &csi.CreateVolumeResponse{
+		Volume: &csi.Volume{
+			VolumeId:      fmt.Sprintf("%s/%s", fs.FileSystemId, subPath),
+			CapacityBytes: util.GiBToBytes(fs.CapacityGiB),
+			VolumeContext: map[string]string{
+				volumeContextDnsName:      fs.DnsName,
+				volumeContextMountName:    fs.MountName,
+				volumeContextSubPath:      subPath,
+				volumeContextFileSystemId: fs.FileSystemId,
+			},
+		},
+	}
 }
 
 func newCreateVolumeResponse(fs *cloud.FileSystem) *csi.CreateVolumeResponse {
