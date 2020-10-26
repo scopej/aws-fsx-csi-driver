@@ -118,7 +118,6 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	klog.V(4).Infof("NodePublishVolume: called with args %+v", req)
 
 	context := req.GetVolumeContext()
-	subpath := context[volumeContextSubPath]
 
 	target := req.GetTargetPath()
 	if len(target) == 0 {
@@ -134,22 +133,25 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		mountOptions = append(mountOptions, "ro")
 	}
 
-	stagingSubPathTarget := fmt.Sprintf("%s/%s", stagingTarget, subpath)
+	subpath := context[volumeContextSubPath]
+	if subpath != "" {
+		stagingTarget = fmt.Sprintf("%s/%s", stagingTarget, subpath)
+	}
 
 	klog.V(5).Infof("NodePublishVolume: creating dir %s", target)
 	if err := d.mounter.MakeDir(target); err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", target, err)
 	}
 
-	klog.V(5).Infof("NodePublishVolume: creating subPath dir %s", stagingSubPathTarget)
-	if err := d.mounter.MakeDir(stagingSubPathTarget); err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not create lustre dir %q: %v", stagingSubPathTarget, err)
+	klog.V(5).Infof("NodePublishVolume: creating subPath dir %s", stagingTarget)
+	if err := d.mounter.MakeDir(stagingTarget); err != nil {
+		return nil, status.Errorf(codes.Internal, "Could not create lustre dir %q: %v", stagingTarget, err)
 	}
 
-	klog.V(5).Infof("NodePublishVolume: bind mounting %s at %s", stagingSubPathTarget, target)
-	if err := d.mounter.Mount(stagingSubPathTarget, target, "", mountOptions); err != nil {
+	klog.V(5).Infof("NodePublishVolume: bind mounting %s at %s", stagingTarget, target)
+	if err := d.mounter.Mount(stagingTarget, target, "", mountOptions); err != nil {
 		os.Remove(target)
-		return nil, status.Errorf(codes.Internal, "Could not bind mount %q at %q: %v", stagingSubPathTarget, target, err)
+		return nil, status.Errorf(codes.Internal, "Could not bind mount %q at %q: %v", stagingTarget, target, err)
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil

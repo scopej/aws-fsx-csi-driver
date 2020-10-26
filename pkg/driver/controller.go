@@ -38,6 +38,8 @@ var (
 )
 
 const (
+	sharedVolumeIdPrefix = "shared"
+
 	volumeContextDnsName      = "dnsname"
 	volumeContextMountName    = "mountname"
 	volumeContextSubPath      = "subPath"
@@ -192,21 +194,13 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
 	}
-	// Ensure that tag exists before deleting?
-	// Describe
-	if fs, err := d.cloud.DescribeFileSystem(ctx, volumeID); err != nil {
-		if err == cloud.ErrNotFound {
-			klog.V(4).Infof("DeleteVolume: volume not found, returning with success")
-			return &csi.DeleteVolumeResponse{}, nil
-		}
-		return nil, status.Errorf(codes.Internal, "Could not describe volume ID %q: %v", volumeID, err)
-	} else {
-		// TODO: Just look for / in the volume id...
-		// check tags
-		if _, exists := fs.Tags[cloud.VolumeNameTagKey]; !exists {
-			klog.V(4).Infof("DeleteVolume: \"%s\" tag not found, returning with success without deleting", cloud.VolumeNameTagKey)
-			return &csi.DeleteVolumeResponse{}, nil
-		}
+	// We don't have any metadata during the delete step, just the VolumeId.
+	// As such, we prefix volumes from a shared fSX volume with a prefix.
+	// Don't delete those, they are not managed by this driver.
+	if strings.HasPrefix(volumeID, sharedVolumeIdPrefix) {
+		// TODO: If filesystem still exists, we might want to remove the folder
+		klog.V(4).Infof("DeleteVolume: shared volume found, returning with success")
+		return &csi.DeleteVolumeResponse{}, nil
 	}
 
 	if err := d.cloud.DeleteFileSystem(ctx, volumeID); err != nil {
@@ -326,7 +320,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 func newCreateVolumeResponseWithSubPath(subPath string, fs *cloud.FileSystem) *csi.CreateVolumeResponse {
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      fmt.Sprintf("%s/%s", fs.FileSystemId, subPath),
+			VolumeId:      fmt.Sprintf("%s/%s/%s", sharedVolumeIdPrefix, fs.FileSystemId, subPath),
 			CapacityBytes: util.GiBToBytes(fs.CapacityGiB),
 			VolumeContext: map[string]string{
 				volumeContextDnsName:      fs.DnsName,
