@@ -15,3 +15,13 @@ Open Questions
    - /pvc-33a152db-2915-4f63-9a6a-8892854ec9f7/
    - /pvc-720e34cc-6ca1-4ac8-8e14-affe52a2ffb7/
    ....
+
+
+TODO
+===
+1. Add tests for Stage/UnStage, existing flows
+2. Add test for all new flows (pre-existing FS)
+3. Investigate mount options for the bind mount
+4. Discover how to use e2e tests
+5. Update documentation
+6. Investigate feasability of `rm` in DeleteVolume
