@@ -50,10 +50,12 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	fsxDriver.Stop()
 	Expect(os.RemoveAll(socket)).NotTo(HaveOccurred())
+	os.RemoveAll("/tmp/csi")
 })
 
 var _ = Describe("AWS FSx for Lustre CSI Driver", func() {
 	_ = os.MkdirAll("/tmp/csi", os.ModePerm)
+
 	config := &sanity.Config{
 		Address:        endpoint,
 		TargetPath:     mountPath,
