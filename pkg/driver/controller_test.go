@@ -339,6 +339,97 @@ func TestCreateVolume(t *testing.T) {
 					t.Fatalf("mountname mismatches. actual: %v expected: %v", mountname, mountName)
 				}
 
+				subPath := "volumeName"
+				subpath, exists := resp.Volume.VolumeContext[volumeContextSubPath]
+				if !exists {
+					t.Fatal("subpath is missing")
+				}
+
+				if subpath != subPath {
+					t.Fatalf("subpath mismatches. actual: %v expected: %v", subpath, subPath)
+				}
+
+				mockCtl.Finish()
+			},
+		},
+		{
+			name: "success: existing fs with subpath",
+			testFunc: func(t *testing.T) {
+				mockCtl := gomock.NewController(t)
+				mockCloud := mocks.NewMockCloud(mockCtl)
+
+				driver := &Driver{
+					endpoint: endpoint,
+					cloud:    mockCloud,
+				}
+
+				req := &csi.CreateVolumeRequest{
+					Name: volumeName,
+					VolumeCapabilities: []*csi.VolumeCapability{
+						stdVolCap,
+					},
+					Parameters: map[string]string{
+						volumeParamsFileSystemId: fileSystemId,
+						volumeParamsSubPath:      "subpath",
+					},
+				}
+
+				ctx := context.Background()
+				fs := &cloud.FileSystem{
+					FileSystemId: fileSystemId,
+					CapacityGiB:  volumeSizeGiB,
+					DnsName:      dnsName,
+					MountName:    mountName,
+				}
+				mockCloud.EXPECT().DescribeFileSystem(gomock.Eq(ctx), gomock.Eq(fileSystemId)).Return(fs, nil)
+				mockCloud.EXPECT().WaitForFileSystemAvailable(gomock.Eq(ctx), gomock.Eq(fileSystemId)).Return(nil)
+
+				resp, err := driver.CreateVolume(ctx, req)
+				if err != nil {
+					t.Fatalf("CreateVolume is failed: %v", err)
+				}
+
+				if resp.Volume == nil {
+					t.Fatal("resp.Volume is nil")
+				}
+
+				sharedVolumeId := "shared/fs-1234/subpath/volumeName"
+				if resp.Volume.VolumeId != sharedVolumeId {
+					t.Fatalf("VolumeId mismatches. actual: %v expected: %v", resp.Volume.VolumeId, fileSystemId)
+				}
+
+				if resp.Volume.CapacityBytes == 0 {
+					t.Fatalf("resp.Volume.CapacityGiB is zero")
+				}
+
+				dnsname, exists := resp.Volume.VolumeContext[volumeContextDnsName]
+				if !exists {
+					t.Fatal("dnsname is missing")
+				}
+
+				if dnsname != dnsName {
+					t.Fatalf("dnsname mismatches. actual: %v expected: %v", dnsname, dnsName)
+				}
+
+				mountname, exists := resp.Volume.VolumeContext[volumeContextMountName]
+				if !exists {
+					t.Fatal("mountname is missing")
+				}
+
+				if mountname != mountName {
+					t.Fatalf("mountname mismatches. actual: %v expected: %v", mountname, mountName)
+				}
+
+				subPath := "subpath/volumeName"
+				subpath, exists := resp.Volume.VolumeContext[volumeContextSubPath]
+				if !exists {
+					t.Fatal("subpath is missing")
+				}
+
+				if subpath != subPath {
+					t.Fatalf("subpath mismatches. actual: %v expected: %v", subpath, subPath)
+				}
+
 				mockCtl.Finish()
 			},
 		},

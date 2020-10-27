@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -141,7 +142,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	context := req.GetVolumeContext()
 	subpath := context[volumeContextSubPath]
 	if subpath != "" {
-		stagingTarget = fmt.Sprintf("%s/%s", stagingTarget, subpath)
+		stagingTarget = path.Join(stagingTarget, subpath)
 	}
 
 	klog.V(5).Infof("NodePublishVolume: creating dir %s", target)

@@ -19,6 +19,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 
@@ -42,6 +43,7 @@ const (
 	volumeContextDnsName                      = "dnsname"
 	volumeContextMountName                    = "mountname"
 	sharedVolumeIdPrefix                      = "shared"
+	volumeParamsSubPath                       = "subpath"
 	volumeParamsFileSystemId                  = "fileSystemId"
 	volumeParamsSubnetId                      = "subnetId"
 	volumeParamsSecurityGroupIds              = "securityGroupIds"
@@ -78,18 +80,22 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	// idempotency is handled by `CreateFileSystem`
 
 	volumeParams := req.GetParameters()
-	fileSystemId := volumeParams[volumeParamsFileSystemId]
-	if fileSystemId != "" {
-		return d.findExistingFilesystem(ctx, fileSystemId, volName)
+
+	if _, hasFileSystemId := volumeParams[volumeParamsFileSystemId]; hasFileSystemId {
+		return d.findExistingFilesystem(ctx, req)
 	} else {
 		return d.createFilesystemFromRequest(ctx, req)
 	}
 }
 
-func (d *Driver) findExistingFilesystem(ctx context.Context, fileSystemId, volName string) (*csi.CreateVolumeResponse, error) {
+func (d *Driver) findExistingFilesystem(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	var (
-		fs  *cloud.FileSystem
-		err error
+		fs           *cloud.FileSystem
+		err          error
+		volumeParams = req.GetParameters()
+		fileSystemId = volumeParams[volumeParamsFileSystemId]
+		subPath      = volumeParams[volumeParamsSubPath]
+		volName      = req.GetName()
 	)
 	if fs, err = d.cloud.DescribeFileSystem(ctx, fileSystemId); err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not find existing filesystem %q: %v", fileSystemId, err)
@@ -98,7 +104,8 @@ func (d *Driver) findExistingFilesystem(ctx context.Context, fileSystemId, volNa
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Filesystem is not ready: %v", err)
 	}
-	return newCreateVolumeResponseWithSubPath(volName, fs), nil
+	volumePath := path.Join(subPath, volName)
+	return newCreateVolumeResponseWithSubPath(volumePath, fs), nil
 }
 
 func (d *Driver) createFilesystemFromRequest(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
