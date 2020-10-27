@@ -384,6 +384,22 @@ func TestNodeStageVolume(t *testing.T) {
 			expectError: true,
 		},
 		{
+			name: "success: missing mountname for static provisioning, default 'fsx' used",
+			driver: func(mockCtrl *gomock.Controller) *Driver {
+				driver, mockMounter := mockDriver(mockCtrl)
+				source := dnsname + "@tcp:/fsx"
+				mockMounter.EXPECT().MakeDir(gomock.Eq(stagingTargetPath)).Return(nil)
+				mockMounter.EXPECT().Mount(gomock.Eq(source), gomock.Eq(stagingTargetPath), gomock.Eq("lustre"), gomock.Any()).Return(nil)
+
+				return driver
+			},
+			request: func() *csi.NodeStageVolumeRequest {
+				req := standardRequest()
+				req.VolumeContext[volumeContextMountName] = ""
+				return req
+			},
+		},
+		{
 			name: "fail: mounter failed to Mount",
 			driver: func(mockCtrl *gomock.Controller) *Driver {
 				driver, mockMounter := mockDriver(mockCtrl)
