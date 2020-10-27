@@ -380,14 +380,10 @@ func TestNodePublishVolume(t *testing.T) {
 				ctx      = context.Background()
 			)
 			_, err := driver.NodePublishVolume(ctx, req)
-			if tc.expectError {
-				if err == nil {
-					t.Fatalf("NodePublishVolume is not failed: %v", err)
-				}
-			} else {
-				if err != nil {
-					t.Fatalf("NodePublishVolume is failed: %v", err)
-				}
+			if tc.expectError && err == nil {
+				t.Fatalf("NodePublishVolume is not failed: %v", err)
+			} else if !tc.expectError && err != nil {
+				t.Fatalf("NodePublishVolume is failed: %v", err)
 			}
 			mockCtrl.Finish()
 		})
@@ -402,85 +398,78 @@ func TestNodeUnpublishVolume(t *testing.T) {
 		targetPath = "/target/path"
 	)
 
+	mockDriver := func(mockCtrl *gomock.Controller) (*Driver, *mocks.MockMounter) {
+		mockMounter := mocks.NewMockMounter(mockCtrl)
+		driver := &Driver{
+			endpoint: endpoint,
+			nodeID:   nodeID,
+			mounter:  mockMounter,
+		}
+		return driver, mockMounter
+	}
+
+	standardRequest := func() *csi.NodeUnpublishVolumeRequest {
+		return &csi.NodeUnpublishVolumeRequest{
+			VolumeId:   "volumeId",
+			TargetPath: targetPath,
+		}
+	}
+
 	testCases := []struct {
-		name     string
-		testFunc func(t *testing.T)
+		name        string
+		driver      func(mockCtrl *gomock.Controller) *Driver
+		request     func() *csi.NodeUnpublishVolumeRequest
+		expectError bool
 	}{
 		{
 			name: "success: normal",
-			testFunc: func(t *testing.T) {
-				mockCtrl := gomock.NewController(t)
-				mockMounter := mocks.NewMockMounter(mockCtrl)
-				driver := &Driver{
-					endpoint: endpoint,
-					nodeID:   nodeID,
-					mounter:  mockMounter,
-				}
-
-				ctx := context.Background()
-				req := &csi.NodeUnpublishVolumeRequest{
-					VolumeId:   "volumeId",
-					TargetPath: targetPath,
-				}
-
+			driver: func(mockCtrl *gomock.Controller) *Driver {
+				driver, mockMounter := mockDriver(mockCtrl)
 				mockMounter.EXPECT().Unmount(gomock.Eq(targetPath)).Return(nil)
-
-				_, err := driver.NodeUnpublishVolume(ctx, req)
-				if err != nil {
-					t.Fatalf("NodeUnpublishVolume is failed: %v", err)
-				}
+				return driver
 			},
+			request: standardRequest,
 		},
 		{
 			name: "fail: targetPath is missing",
-			testFunc: func(t *testing.T) {
-				mockCtrl := gomock.NewController(t)
-				mockMounter := mocks.NewMockMounter(mockCtrl)
-				driver := &Driver{
-					endpoint: endpoint,
-					nodeID:   nodeID,
-					mounter:  mockMounter,
-				}
-
-				ctx := context.Background()
-				req := &csi.NodeUnpublishVolumeRequest{
-					VolumeId: "volumeId",
-				}
-
-				_, err := driver.NodeUnpublishVolume(ctx, req)
-				if err == nil {
-					t.Fatalf("NodeUnpublishVolume is not failed: %v", err)
-				}
+			driver: func(mockCtrl *gomock.Controller) *Driver {
+				driver, _ := mockDriver(mockCtrl)
+				return driver
 			},
+			request: func() *csi.NodeUnpublishVolumeRequest {
+				req := standardRequest()
+				req.TargetPath = ""
+				return req
+			},
+			expectError: true,
 		},
 		{
 			name: "fail: mounter failed to umount",
-			testFunc: func(t *testing.T) {
-				mockCtrl := gomock.NewController(t)
-				mockMounter := mocks.NewMockMounter(mockCtrl)
-				driver := &Driver{
-					endpoint: endpoint,
-					nodeID:   nodeID,
-					mounter:  mockMounter,
-				}
-
-				ctx := context.Background()
-				req := &csi.NodeUnpublishVolumeRequest{
-					VolumeId:   "volumeId",
-					TargetPath: targetPath,
-				}
-
+			driver: func(mockCtrl *gomock.Controller) *Driver {
+				driver, mockMounter := mockDriver(mockCtrl)
 				mountErr := fmt.Errorf("Unmount failed")
 				mockMounter.EXPECT().Unmount(gomock.Eq(targetPath)).Return(mountErr)
-
-				_, err := driver.NodeUnpublishVolume(ctx, req)
-				if err == nil {
-					t.Fatalf("NodeUnpublishVolume is not failed: %v", err)
-				}
+				return driver
 			},
+			request:     standardRequest,
+			expectError: true,
 		},
 	}
 	for _, tc := range testCases {
-		t.Run(tc.name, tc.testFunc)
+		t.Run(tc.name, func(t *testing.T) {
+			var (
+				mockCtrl = gomock.NewController(t)
+				driver   = tc.driver(mockCtrl)
+				req      = tc.request()
+				ctx      = context.Background()
+			)
+			_, err := driver.NodeUnpublishVolume(ctx, req)
+			if tc.expectError && err == nil {
+				t.Fatalf("NodeUnpublishVolume is not failed: %v", err)
+			} else if !tc.expectError && err != nil {
+				t.Fatalf("NodeUnpublishVolume is failed: %v", err)
+			}
+			mockCtrl.Finish()
+		})
 	}
 }
