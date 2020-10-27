@@ -55,9 +55,9 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	source := fmt.Sprintf("%s@tcp:/%s", dnsname, mountname)
 
-	target := req.GetStagingTargetPath()
-	if len(target) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Target path not provided")
+	stagingTarget := req.GetStagingTargetPath()
+	if len(stagingTarget) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Staging Target path not provided")
 	}
 
 	volCap := req.GetVolumeCapability()
@@ -86,15 +86,15 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			}
 		}
 	}
-	klog.V(5).Infof("NodeStageVolume: creating dir %s", target)
-	if err := d.mounter.MakeDir(target); err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", target, err)
+	klog.V(5).Infof("NodeStageVolume: creating dir %s", stagingTarget)
+	if err := d.mounter.MakeDir(stagingTarget); err != nil {
+		return nil, status.Errorf(codes.Internal, "Could not create dir %q: %v", stagingTarget, err)
 	}
 
-	klog.V(5).Infof("NodeStageVolume: lustre mounting %s at %s with options %v", source, target, mountOptions)
-	if err := d.mounter.Mount(source, target, "lustre", mountOptions); err != nil {
-		os.Remove(target)
-		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, target, err)
+	klog.V(5).Infof("NodeStageVolume: lustre mounting %s at %s with options %v", source, stagingTarget, mountOptions)
+	if err := d.mounter.Mount(source, stagingTarget, "lustre", mountOptions); err != nil {
+		os.Remove(stagingTarget)
+		return nil, status.Errorf(codes.Internal, "Could not mount %q at %q: %v", source, stagingTarget, err)
 	}
 
 	return &csi.NodeStageVolumeResponse{}, nil
@@ -108,15 +108,15 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
 	}
 
-	target := req.GetStagingTargetPath()
-	if len(target) == 0 {
+	stagingTarget := req.GetStagingTargetPath()
+	if len(stagingTarget) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Staging Target path not provided")
 	}
 
-	klog.V(5).Infof("NodeUnstageVolume: unmounting %s", target)
-	err := d.mounter.Unmount(target)
+	klog.V(5).Infof("NodeUnstageVolume: unmounting %s", stagingTarget)
+	err := d.mounter.Unmount(stagingTarget)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not unmount %q: %v", target, err)
+		return nil, status.Errorf(codes.Internal, "Could not unmount %q: %v", stagingTarget, err)
 	}
 
 	return &csi.NodeUnstageVolumeResponse{}, nil
